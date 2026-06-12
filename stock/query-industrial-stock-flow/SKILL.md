@@ -29,7 +29,7 @@ Choose exactly one endpoint by default.
 | User intent | Endpoint |
 | --- | --- |
 | 按 SKU ID 或 SKU 编码查看原始库存流水、流水时间、库存类型、流水类型和变更前后数量 | `/scm/inner/stock/agent-api/query-stock-flow-page` |
-| 按主订单号、子订单号或退款单号查看下单、取消/退款、出库阶段的聚合库存变更 | `/scm/inner/stock/agent-api/query-stock-flow` |
+| 按主订单号、子订单号或退款单号查看下单、取消/超时、发货前退款、发货后退款和出库阶段的聚合库存变更 | `/scm/inner/stock/agent-api/query-stock-flow` |
 
 Do not call both endpoints unless the user explicitly asks for both raw database flows and business-stage aggregation.
 
@@ -50,15 +50,12 @@ Request fields:
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `pageNo` | Yes | Page number; non-positive values are treated as page 1 |
-| `skuIds` | Conditional | SKU ID list; pure numeric values, e.g. `[10001, 10002]` |
-| `skuCodes` | Conditional | SKU code list; values start with `SKU` prefix, e.g. `["SKU26060300019000001"]` |
+| `skuIds` | Conditional | SKU ID list |
+| `skuCodes` | Conditional | SKU code list |
 | `stockTypes` | No | Stock-type filters |
 | `flowTypes` | No | Flow-type filters |
 
 At least one of `skuIds` or `skuCodes` must be non-empty. They may be supplied together. Resolved SKU records are deduplicated by `merchantId + skuId`.
-
-- `skuId`: pure numeric identifier, e.g. `10001`
-- `skuCode`: string starting with `SKU` prefix, e.g. `SKU26060300019000001`
 
 Classify user-supplied SKU identifiers before building the request:
 
@@ -88,6 +85,7 @@ Supported flow types:
 | `ADD_SELLABLE_STOCK` | 增加可售库存 |
 | `REDUCE_FROZEN_STOCK` | 减少冻结库存 |
 | `REDUCE_REAL_STOCK` | 减少真实库存 |
+| `ADD_REAL_STOCK` | 增加真实库存 |
 | `MANUAL_INCREASE` | 手动增加 |
 | `MANUAL_DECREASE` | 手动减少 |
 
@@ -176,13 +174,21 @@ Results are grouped by sub-order number, `merchantId`, and `skuId`. `relatedOrde
 
 Stock actions are classified only from complete combinations within the same flow number, merchant, and SKU group:
 
-| Action | Virtual/sellable stock | Frozen stock | Real stock |
-| --- | --- | --- | --- |
-| `orderChange` | `VIRTUAL_STOCK + REDUCE_SELLABLE_STOCK` | `FROZEN_STOCK + ADD_FROZEN_STOCK` | Not applicable |
-| `cancelOrRefundChange` | `VIRTUAL_STOCK + ADD_SELLABLE_STOCK` | `FROZEN_STOCK + REDUCE_FROZEN_STOCK` | Not applicable |
-| `outboundChange` | Not applicable | `FROZEN_STOCK + REDUCE_FROZEN_STOCK` | `REAL_STOCK + REDUCE_REAL_STOCK` |
+| Response field | When populated | Virtual/sellable stock | Frozen stock | Real stock |
+| --- | --- | --- | --- | --- |
+| `orderChange` | Order flow | `VIRTUAL_STOCK + REDUCE_SELLABLE_STOCK` | `FROZEN_STOCK + ADD_FROZEN_STOCK` | Not applicable |
+| `cancelChange` | Cancellation or timeout flow under the forward order number | `VIRTUAL_STOCK + ADD_SELLABLE_STOCK` | `FROZEN_STOCK + REDUCE_FROZEN_STOCK` | Not applicable |
+| `beforeShipmentRefundChange` | The sellable/frozen combination occurs under a recognized refund number | `VIRTUAL_STOCK + ADD_SELLABLE_STOCK` | `FROZEN_STOCK + REDUCE_FROZEN_STOCK` | Not applicable |
+| `afterShipmentRefundChange` | One or more recognized refund numbers restore real and sellable stock after shipment | `VIRTUAL_STOCK + ADD_SELLABLE_STOCK` | Not applicable | `REAL_STOCK + ADD_REAL_STOCK` |
+| `outboundChange` | Outbound flow | Not applicable | `FROZEN_STOCK + REDUCE_FROZEN_STOCK` | `REAL_STOCK + REDUCE_REAL_STOCK` |
 
 Do not classify `REDUCE_FROZEN_STOCK` by itself. Its companion `ADD_SELLABLE_STOCK` or `REDUCE_REAL_STOCK` determines whether it belongs to cancellation/refund or outbound.
+
+For a pre-shipment refund, populate only `beforeShipmentRefundChange`. Do not copy the same quantities into `cancelChange`.
+
+`afterShipmentRefundChange` is recognized only for flows whose business number is a refund number resolved in the query context. Multiple post-shipment refunds for the same sub-order, merchant, and SKU are summed into this one SKU-level object. It does not change frozen stock because frozen stock was already released during outbound processing.
+
+Refund numbers are returned only in `relatedOrderNos.refundNos`. The stage objects are all `StockChangeDTO` values and do not contain their own `refundNos`.
 
 Manual changes, incomplete pairs, unsupported combinations, ambiguous main-order-to-child-order mappings, missing documents, and internal-call failures are reported in `errors` without invalidating successfully aggregated rows.
 
@@ -196,24 +202,71 @@ Each aggregate record contains:
 | `relatedOrderNos.mainOrderNo` | Associated main order |
 | `relatedOrderNos.refundNos` | Associated refund numbers |
 | `orderChange` | Sellable, frozen, and real quantity changes caused by ordering |
-| `cancelOrRefundChange` | Quantity changes caused by cancellation, timeout, or refund |
+| `cancelChange` | Quantity changes caused by cancellation or timeout |
+| `beforeShipmentRefundChange` | Pre-shipment refund quantities |
+| `afterShipmentRefundChange` | SKU-level sum of post-shipment refund quantities |
 | `outboundChange` | Quantity changes caused by outbound processing |
 
 ## Response Presentation
 
-For raw flow pages:
+Optimize the response for narrow agent panes. Do not echo the complete JSON unless the user explicitly asks for raw JSON. Do not place identity fields and all stock stages in one wide table.
 
-| 业务单号 | 店铺 | SKU ID | SKU 名称 | 库存类型 | 流水类型 | 变更数量 | 变更前 | 变更后 | 创建人 | 创建时间 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+### Raw Flow Pages
 
-Use the description fields for stock and flow types, optionally retaining the code in parentheses. Then report current page, fixed page size 50, and total count.
+Group records by `shopName + skuId`. Start each group with a short heading and metadata:
 
-For business-number aggregation:
+```text
+### 测试店铺 · SKU 26060300019000001
+商品：示例商品
+```
 
-| 子订单号 | 店铺 | SKU ID | SKU 名称 | 关联主单 | 关联退款单 | 下单变更（可售/冻结/真实） | 取消或退款变更（可售/冻结/真实） | 出库变更（可售/冻结/真实） |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+Then use this narrow table:
 
-Format each action cell as `可售: {virtualStockChangeQty} / 冻结: {frozenStockChangeQty} / 真实: {realStockChangeQty}`. Display `-` for a null component and join multiple refund numbers with commas.
+| 时间 | 业务单号 | 库存类型 | 流水类型 | 变更 | 变更前 → 变更后 |
+| --- | --- | --- | --- | ---: | --- |
+| 2026-06-12 10:00:00 | SO_1001 | 可售库存 | 减少可售库存 | -2 | 10 → 8 |
+
+Put `createUser` on a separate `操作人：...` line only when it is useful to the request. Use description fields for stock and flow types, optionally retaining the code in parentheses.
+
+After all groups, report current page, fixed page size 50, and total count. Keep tables to at most six columns.
+
+### Business-Number Aggregation
+
+Render each aggregate record as its own SKU block. Never render multiple SKU records as one wide lifecycle table.
+
+```text
+### 子订单 SO_1001 · SKU 26060300019000001
+店铺：测试店铺
+商品：示例商品
+主订单：MO_1001
+退款单：RF_1、RF_2
+```
+
+Follow the metadata with exactly this action table:
+
+| 库存动作 | 可售库存 | 冻结库存 | 真实库存 |
+| --- | ---: | ---: | ---: |
+| 下单 | -2 | +2 | - |
+| 取消/超时 | - | - | - |
+| 发货前退款 | - | - | - |
+| 出库 | - | -2 | -2 |
+| 发货后退款 | +1 | - | +1 |
+
+Map rows in this fixed order:
+
+1. `orderChange` → 下单
+2. `cancelChange` → 取消/超时
+3. `beforeShipmentRefundChange` → 发货前退款
+4. `outboundChange` → 出库
+5. `afterShipmentRefundChange` → 发货后退款
+
+Formatting rules:
+
+- Display `-` for a null action or null quantity.
+- Preserve the API sign. Add `+` only when a positive value is rendered for readability.
+- Show `relatedOrderNos.refundNos` once in the metadata, joined with `、`; do not repeat refund numbers in action rows.
+- Keep one blank line between SKU blocks.
+- If many records are returned, show all blocks unless the user requested a summary. Do not compress multiple SKU values into slash-delimited cells.
 
 After either table:
 
@@ -233,5 +286,12 @@ After either table:
 - Expecting caller-supplied `pageSize` to override the fixed size of 50.
 - Treating an `RF_` query as the complete order lifecycle; it returns only that refund's flows.
 - Classifying an isolated `REDUCE_FROZEN_STOCK` without checking its companion flow.
+- Omitting `ADD_REAL_STOCK` when filtering or interpreting post-shipment refund flows.
+- Reading the removed `cancelOrRefundChange` field instead of `cancelChange`.
+- Copying a pre-shipment refund into `cancelChange`; it belongs only to `beforeShipmentRefundChange`.
+- Reading refund numbers from stage objects instead of `relatedOrderNos.refundNos`.
+- Expecting `afterShipmentRefundChange` to contain a frozen-stock change.
+- Rendering an 11-column lifecycle table or placing several stock actions in one compressed cell.
+- Dumping the full response JSON when the user asked for a readable result.
 - Hiding successful rows because the response also contains `errors`.
 - Printing an auth token or sensitive production base URL.

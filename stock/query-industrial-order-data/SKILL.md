@@ -111,12 +111,21 @@ The outer response is `Result<T>`. Treat HTTP errors, authentication errors, tim
 
 - Use for detailed forward-order and goods data from main-order or sub-order numbers.
 - Body example: `["MAIN_1001","SUB_1002"]`
-- Returns `List<ForwardOrderDTO>`.
+- Returns `AgentForwardOrderQueryResultDTO` inside the outer `Result.data`.
+- The business result contains `data: List<AgentForwardOrderDTO>` and `errors: List<String>`.
 - A sub-order input returns that sub-order; a main-order input expands to all sub-orders.
 - Results are deduplicated by sub-order number.
-- Blank, unmatched, and failed inputs are silently skipped, so output is not positionally aligned with input.
+- Blank order numbers, unmatched orders, and caught exceptions are written to `errors` without discarding successful data.
+- The successful `data` list is expanded by sub-order and is not positionally aligned one-to-one with the input.
 
-`ForwardOrderDTO`:
+`AgentForwardOrderQueryResultDTO`:
+
+```text
+data[AgentForwardOrderDTO]
+errors[string]
+```
+
+`AgentForwardOrderDTO`:
 
 ```text
 mainOrderNo
@@ -129,11 +138,19 @@ goodsList[{skuId, skuName, num}]
 
 - Use for refund-order details and refund goods.
 - Body example: `["RF_1001","ORDER_1002",""]`
-- Returns `List<ReverseOrderDTO>`.
-- Blank values, non-`RF_` values, unmatched refund orders, and failed calls are silently skipped.
-- Output is not positionally aligned with input.
+- Returns `AgentReverseOrderQueryResultDTO` inside the outer `Result.data`.
+- The business result contains `data: List<AgentReverseOrderDTO>` and `errors: List<String>`.
+- Blank values, non-`RF_` values, unmatched refund orders, and caught exceptions are written to `errors` without discarding successful data.
+- The successful `data` list contains one element per queried refund order and is not positionally aligned one-to-one with the input when errors occur.
 
-`ReverseOrderDTO`:
+`AgentReverseOrderQueryResultDTO`:
+
+```text
+data[AgentReverseOrderDTO]
+errors[string]
+```
+
+`AgentReverseOrderDTO`:
 
 ```text
 refundNo
@@ -166,7 +183,8 @@ Also report:
 
 - Environment name only: `local`, `test`, `pre`, or `prod`.
 - Whether authentication was required, without exposing credentials.
-- For DTO endpoints, any invalid or unmatched inputs omitted by filtering when this can be determined from the response; otherwise state that the endpoint can silently omit unsuccessful items.
+- For forward/reverse DTO endpoints, present all entries from the business-level `errors` list after the successful data table.
+- Do not confuse outer `Result.data` with the inner business-level `data` list: successful detail rows are read from `response.data.data`, while per-item errors are read from `response.data.errors`.
 
 ## Common Mistakes
 
@@ -174,6 +192,8 @@ Also report:
 - Calling `query-sub-order-nos` when starting from an `RF_` refund number.
 - Calling `query-refund-nos` when the user asked for refund goods details.
 - Assuming forward/reverse DTO results align one-to-one with inputs.
+- Reading forward/reverse rows from `response.data` instead of `response.data.data`.
+- Ignoring the business-level `response.data.errors` list because the outer result succeeded.
 - Automatically chaining endpoints when the user asked for one relationship.
 - Treating a business “未查询到” description as an HTTP failure.
 - Printing an auth token or a sensitive production base URL.
