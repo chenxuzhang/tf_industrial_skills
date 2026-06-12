@@ -138,8 +138,11 @@ goodsList[{skuId, skuName, num}]
 ```text
 refundNo
 orderNo
+orderStatus (0-待付款, 1-待发货, 2-待收货, 3-已完成, 4-已取消)
 goodsList[{skuId, skuName, num}]
 ```
+
+`orderStatus` is the associated order status. Preserve the numeric value from the API and present its Chinese meaning using the mapping above. If the value is null or outside `0-4`, report it as unknown instead of guessing.
 
 ## Response Presentation
 
@@ -156,8 +159,8 @@ For forward-order data:
 
 For reverse-order data:
 
-| 退款单号 | 子订单号 | SKU ID | SKU 名称 | 退款数量 |
-| --- | --- | --- | --- | --- |
+| 退款单号 | 子订单号 | 订单状态 | SKU ID | SKU 名称 | 退款数量 |
+| --- | --- | --- | --- | --- | --- |
 
 Also report:
 
