@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nacos-cli"
+version = "0.1.0"
+description = "CLI tool for querying Nacos configurations and services"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.28.0",
+]
+
+[project.scripts]
+nacos-get-namespaces = "scripts.get_namespaces:main"
+nacos-get-config-list = "scripts.get_config_list:main"
+nacos-get-config-content = "scripts.get_config_content:main"
+nacos-get-services = "scripts.get_services:main"
+nacos-get-service-detail = "scripts.get_service_detail:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts"]
