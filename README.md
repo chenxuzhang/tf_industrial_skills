@@ -1,8 +1,27 @@
 # Industrial Skills
 
-hbip-scm 工业品 Agent 技能集合，用于查询库存和订单数据。
+hbip-scm 工业品 Agent 技能集合，涵盖库存查询、订单查询、Redis 查询、Nacos 配置查询和 GitLab CI 流水线操作。
+
+## 目录结构
+
+```
+tf_industrial_skills/
+├── gitlab/
+│   └── gitlab-pipeline-operations/    # GitLab CI 流水线操作
+├── nacos/
+│   └── nacos-query/                   # Nacos 配置与服务查询
+└── stock/
+    ├── query-industrial-order-data/       # 订单数据查询
+    ├── query-industrial-sellable-stock/   # 可售库存查询
+    ├── query-industrial-stock-detail/     # 库存明细查询
+    ├── query-industrial-stock-flow/       # 库存流水查询
+    ├── query-industrial-stock-reconcile/  # 库存对账查询
+    └── query-industrial-stock-redis/      # 库存 Redis 查询
+```
 
 ## 环境配置
+
+### 库存 / 订单服务
 
 | 环境 | 环境变量 | 默认地址 |
 | --- | --- | --- |
@@ -13,17 +32,28 @@ hbip-scm 工业品 Agent 技能集合，用于查询库存和订单数据。
 
 认证令牌通过 `SCM_AUTH_TOKEN` 环境变量读取。
 
+### Nacos 服务
+
+连接信息从 `~/.nacos/config.json` 或环境变量 `NACOS_{ENV}_ADDR`、`NACOS_{ENV}_USERNAME`、`NACOS_{ENV}_PASSWORD` 读取。支持环境：`test`、`staging`、`prod`。
+
+### GitLab CI
+
+需在目标 Git 仓库目录下执行，依赖 `glab` 和 `jq` CLI 工具。
+
 ---
 
 ## Skills 概览
 
-| Skill | 用途 | 支持的查询类型 |
+| Skill | 用途 | 关键能力 |
 | --- | --- | --- |
-| [query-industrial-sellable-stock](#query-industrial-sellable-stock) | 查询可售库存 | SKU ID / SPU ID / SKU Code / SPU Code |
-| [query-industrial-stock-detail](#query-industrial-stock-detail) | 查询库存明细 | SKU ID / SKU Code |
-| [query-industrial-stock-flow](#query-industrial-stock-flow) | 查询库存流水 | SKU ID / SKU Code / 订单号 |
-| [query-industrial-stock-reconcile](#query-industrial-stock-reconcile) | 查询库存对账 | 批次号 / 时间范围 |
-| [query-industrial-order-data](#query-industrial-order-data) | 查询订单数据 | 订单号 |
+| [query-industrial-sellable-stock](#query-industrial-sellable-stock) | 查询可售库存 | SKU ID / SPU ID / SKU Code / SPU Code，Redis + DB 双源 |
+| [query-industrial-stock-detail](#query-industrial-stock-detail) | 查询库存明细 | SKU ID / SKU Code，真实/冻结/可售库存 |
+| [query-industrial-stock-flow](#query-industrial-stock-flow) | 查询库存流水 | 原始流水 / 按订单聚合变更 |
+| [query-industrial-stock-redis](#query-industrial-stock-redis) | 查询库存 Redis | 数据源配置 / Key 模式 / Key 值查询 |
+| [query-industrial-stock-reconcile](#query-industrial-stock-reconcile) | 查询库存对账 | 批次快照对账 / 可售库存流水对账 |
+| [query-industrial-order-data](#query-industrial-order-data) | 查询订单数据 | 订单类型判断 / 正向&退款订单详情 |
+| [nacos-query](#nacos-query) | 查询 Nacos 配置 | 命名空间 / 配置 / 服务实例 / SCM IP |
+| [gitlab-pipeline-operations](#gitlab-pipeline-operations) | GitLab CI 流水线 | 查询记录 / 按 ID 查详情 / 创建流水线 |
 
 ---
 
@@ -273,3 +303,141 @@ hbip-scm 工业品 Agent 技能集合，用于查询库存和订单数据。
 | 退款单号 | 子订单号 | SKU ID | SKU 名称 | 退款数量 |
 | --- | --- | --- | --- | --- |
 | RF_1001 | SUB_1001 | 1 | 商品A | 1 |
+
+---
+
+## query-industrial-stock-redis
+
+**用途**: 查询 hbip-scm 库存 Redis 数据源配置、Key 模式和 Key 值
+
+**API 端点**:
+- `POST /scm/inner/stock/agent-api/query-redis-config` - 查询 Redis 数据源配置
+- `POST /scm/inner/stock/agent-api/query-redis-keys` - 查询支持的 Redis Key 模式
+- `POST /scm/inner/stock/agent-api/query-redis-value` - 查询指定 Key 的值、类型和 TTL
+
+### 查询 Redis 配置
+
+无需请求体，返回数据源列表（名称、DB 索引、超时、序列化器）。
+
+### 查询 Redis Key 模式
+
+请求体为 `{}`，当前支持的模式：
+
+| Key 模式 | 占位符 | 用途 |
+| --- | --- | --- |
+| `hbip-scm:scm-stock:...:stock:freeze:idempotent:%s` | 主订单号 | 下单库存冻结幂等 |
+| `hbip-scm:scm-stock:...:stock:unfreeze:idempotent:%s` | 子订单号 / 退款单号 | 库存解冻幂等 |
+
+### 查询 Redis 值
+
+```json
+{
+  "keys": [
+    {"key": "hbip-scm:...:freeze:idempotent:MAIN_ORDER_NO", "dataSource": "可选数据源名"},
+    {"key": "hbip-scm:...:unfreeze:idempotent:RF_1001"}
+  ]
+}
+```
+
+### 对话示例
+
+```
+用户: 查看测试环境 stock Redis 数据源配置
+用户: 查看当前支持哪些 Redis Key 模式
+用户: 查询 key hbip-scm:scm-stock:...:freeze:idempotent:ORDER_1001 的值
+```
+
+### 结果展示格式
+
+**配置**:
+
+| 数据源 | 主数据源 | DB | 超时(ms) | 序列化覆盖 |
+| --- | --- | --- | --- | --- |
+| primary | 是 | 0 | 2000 | - |
+
+**Key 值**:
+
+| Key | 类型 | TTL(秒) | 值 |
+| --- | --- | --- | --- |
+| ... | string | -1 | {"status":1} |
+
+---
+
+## nacos-query
+
+**用途**: 查询 Nacos 配置中心的命名空间、配置列表、配置内容、服务列表和服务实例详情
+
+**执行方式**: 在技能目录下通过 `uvx --from .` 执行 Python CLI
+
+### SCM IP 快捷查询
+
+当用户查询 SCM IP / hbip-scm 节点时，直接执行：
+
+```bash
+uvx --from . nacos-get-service-detail --env test --service-name hbip-scm --group DEFAULT_GROUP --namespace industrial-test
+```
+
+### 命令列表
+
+| 命令 | 功能 | 必需参数 | 可选参数 |
+| --- | --- | --- | --- |
+| `nacos-get-namespaces` | 获取命名空间列表 | `--env` | `--config` |
+| `nacos-get-config-list` | 获取配置列表 | `--env` | `--namespace`, `--config` |
+| `nacos-get-config-content` | 获取配置内容 | `--env`, `--data-id` | `--group`, `--namespace`, `--config` |
+| `nacos-get-services` | 获取服务列表 | `--env` | `--namespace`, `--group`, `--page-no`, `--page-size`, `--config` |
+| `nacos-get-service-detail` | 获取服务实例详情 | `--env`, `--service-name` | `--group`, `--namespace`, `--config` |
+
+### 对话示例
+
+```
+用户: 查询测试环境的命名空间列表
+用户: 查询 industrial-test 命名空间下的配置列表
+用户: 查看测试环境 application.yml 的配置内容
+用户: 查询测试环境 hbip-scm 服务的实例列表
+```
+
+---
+
+## gitlab-pipeline-operations
+
+**用途**: 使用 `glab` CLI 查询 GitLab CI 流水线执行记录、按 ID 查看详情、或创建指定环境的流水线
+
+### 意图路由
+
+| 用户意图 | 操作 |
+| --- | --- |
+| 查询流水线执行记录、查看 pipeline 记录 | 查询流水线列表 |
+| 根据流水线 ID 查询详情 | 查询单个流水线详情 |
+| 创建测试环境流水线 | `glab pipeline run -b test` |
+| 创建预发布流水线 | `glab pipeline run -b pre` |
+| 创建正式环境流水线 | `glab pipeline run -b master` |
+
+### 查询流水线列表
+
+```bash
+for id in $(glab pipeline list -F json | jq -r '.[].id'); do
+  glab ci get --pipeline-id "$id" 2>/dev/null | head -10
+  echo "---"
+done
+```
+
+### 结果展示格式
+
+| ID | Status | Ref | SHA | User | Created |
+| --- | --- | --- | --- | --- | --- |
+| 1234 | success | test | a1b2c3d4 | user1 | 2026-06-20 |
+
+### 对话示例
+
+```
+用户: 查看最近的流水线执行记录
+用户: 查询流水线 ID 1234 的详情
+用户: 创建测试环境流水线
+用户: 触发正式环境流水线
+```
+
+### 安全规则
+
+- 不打印 GitLab token、cookies、项目密钥或敏感 CI/CD 变量
+- 创建流水线为副作用操作，仅在用户明确要求时执行
+- 生产环境需用户明确指定 `master`/`prod`/`production`/`正式环境`
