@@ -1,43 +1,35 @@
 ---
 name: query-industrial-sellable-stock
-description: Use when an agent needs to query hbip-scm industrial sellable stock by SKU ID, SPU ID, SKU code, or SPU code in local, test, pre-release, or production environments.
+description: Use when an agent needs to query hbip-scm industrial sellable stock by SKU ID, SPU ID, SKU code, or SPU code through PMS-authenticated test pre prod environments.
 ---
 
 # Query Industrial Sellable Stock
 
 ## Purpose
 
-Query 工业品项目可售库存 through the hbip-scm Agent stock API. Keep the workflow simple: identify environment, classify query values, call the API, then summarize Redis and DB sellable stock.
+Query 工业品项目可售库存 through the PMS-authenticated SCM admin API. Keep the workflow simple: identify environment, classify query values, call the API, then summarize Redis and DB sellable stock.
 
-## Platform Notes
+## Security Rules
 
-This skill is agent-platform neutral.
+- Never read, open, cat, sed, grep, summarize, or display the PMS login config file in the agent context. It contains domains, accounts, passwords, and authorization tokens.
+- Use the PMS login skill's `scripts/read_pms_env.py` helper to read runtime values into variables. Do not print those variables.
+- Always execute Python helpers through `uvx --isolated --python 3.14 python ...`.
+- Never print authorization tokens, passwords, cookies, or sensitive production hosts.
+- Only query `prod` when the user explicitly selects production.
 
-- Claude Code: use the available shell tool or HTTP tool.
-- Codex / opencode: use the available shell command tool; prefer `curl` when no dedicated HTTP client is available.
-- Gemini or other agents: use the equivalent command execution tool.
-- Never expose tokens, cookies, internal production hosts, or real customer data in the final response.
+## Endpoint
 
-## Environment Selection
-
-Endpoint path:
+Use the admin endpoint:
 
 ```text
-/scm/inner/stock/agent-api/query-sellable-stock
+POST {base_url}/scm/admin/stock/query/query-sellable-stock
+authorization: {authorization}
+content-type: application/json
+x-app-code: ADMIN
+x-client-type: PC
 ```
 
-Resolve the base URL like this:
-
-| Environment | Base URL source | Default |
-| --- | --- | --- |
-| `local` | fixed local startup URL | `http://localhost:8803` |
-| `test` | `SCM_STOCK_TEST_BASE_URL` | ask user if missing |
-| `pre` / `pre-release` | `SCM_STOCK_PRE_BASE_URL` | ask user if missing |
-| `prod` / `production` | `SCM_STOCK_PROD_BASE_URL` | ask user if missing |
-
-Before querying `prod`, explicitly confirm that the user requested production. Do not infer production from ambiguous wording.
-
-If auth is required, read it from an environment variable such as `SCM_AUTH_TOKEN`. Do not ask the user to paste secrets into chat unless there is no safer option.
+`base_url` and `authorization` must come from the selected environment in the PMS login config file. Do not pass `Bearer`; the header value is the raw authorization token.
 
 ## Input Classification
 
@@ -52,38 +44,50 @@ Build an `AgentStockQueryReqDTO` JSON body. At least one list must be non-empty.
 
 When the user provides mixed values, group them into the matching arrays. If a numeric value may be an SPU ID but the user did not say so, ask a brief clarification or default to `skuIds` and state that assumption.
 
-## Request
+## Request Flow
 
-Use `POST` with `Content-Type: application/json`.
-
-Local example:
+Run commands from this skill directory. Use shell variables so secrets are not printed.
 
 ```bash
-curl -sS -X POST "http://localhost:8803/scm/inner/stock/agent-api/query-sellable-stock" \
-  -H "Content-Type: application/json" \
-  -d '{"skuIds":[1,2],"skuCodes":["SKU26060300019000001"],"spuCodes":["SPU26060300016000001"]}'
+ENV_NAME="test"
+DATA_RAW='{"skuIds":[1],"spuIds":[6]}'
+PMS_CONFIG="../pms-login/pms-login-config.json"
+
+BASE_URL="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field base_url)"
+AUTHORIZATION="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field authorization)"
+
+curl -sS "${BASE_URL}/scm/admin/stock/query/query-sellable-stock" \
+  -H "authorization: ${AUTHORIZATION}" \
+  -H "content-type: application/json" \
+  -H "x-app-code: ADMIN" \
+  -H "x-client-type: PC" \
+  --data-raw "${DATA_RAW}"
 ```
 
-Environment example:
+Do not echo `BASE_URL` or `AUTHORIZATION`. The final answer should show only the environment name, not the sensitive host or token.
+
+## Token Refresh
+
+If the business API returns:
+
+```json
+{"msg":"无权限","code":401,"ok":false}
+```
+
+refresh the PMS token once for the same environment:
 
 ```bash
-BASE_URL="${SCM_STOCK_TEST_BASE_URL}"
-
-curl -sS -X POST "${BASE_URL}/scm/inner/stock/agent-api/query-sellable-stock" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '{"skuIds":[1],"spuIds":[6]}'
+uvx --isolated --python 3.14 python ../pms-login/scripts/pms_login.py --env "${ENV_NAME}"
 ```
 
-If no token is needed, omit the `Authorization` header.
+Then reload `BASE_URL` and `AUTHORIZATION` with `../pms-login/scripts/read_pms_env.py` and retry the request once. If the retry still returns `code=401`, stop. Do not refresh again.
 
 ## Response Handling
 
 The outer response uses `Result<AgentStockQueryResultDTO>`.
 
-- `code == 200`: API call succeeded; inspect business data.
-- `data.data`: matched stock rows.
-- `data.errors`: conditions that did not match data.
+- Successful business data is under `data.data`.
+- Unmatched conditions are under `data.errors`.
 - `virtualStock`: Redis cached sellable stock, 6 decimal precision.
 - `dbVirtualStock`: database sellable stock.
 - `queryCondition`: matched input condition, such as `skuId:1`; empty usually means SKU ID query.
@@ -108,13 +112,19 @@ Return a concise table:
 
 Then add:
 
+- Status: Full success, Partial success, All failed, or Request failed.
+- Token refreshed: `yes` only if the first request returned 401 and PMS login was rerun; never print the token.
 - Unmatched: list `data.errors`, if any.
-- Environment: name only (`test`, `pre`, `prod`, or `local`), not the full host if it is sensitive.
-- Auth: say whether auth was required, but never print the token.
+- Environment: `test`, `pre`, or `prod`; do not print a sensitive host.
 
-Use these labels:
+## Common Mistakes
 
-- Full success: rows exist and `errors` is empty.
-- Partial success: rows exist and `errors` is not empty.
-- All failed: rows are empty and `errors` is not empty.
-- Request failed: HTTP error, auth error, timeout, or non-200 `code`.
+- Reading or displaying the PMS login config file before running the command.
+- Using ad hoc inline Python instead of `../pms-login/scripts/read_pms_env.py`.
+- Using any runner other than `uvx`.
+- Manually copying a token into chat or the final answer.
+- Using the legacy inner agent endpoint instead of the PMS admin endpoint.
+- Prefixing the authorization header with `Bearer`.
+- Retrying login more than once after repeated 401 responses.
+- Sending a raw array instead of a JSON object.
+- Printing an auth token or a sensitive production base URL.

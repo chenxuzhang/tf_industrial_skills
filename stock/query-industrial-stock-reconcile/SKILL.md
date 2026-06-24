@@ -1,31 +1,26 @@
 ---
 name: query-industrial-stock-reconcile
-description: Use when an agent needs to query hbip-scm stock reconciliation batches or differences, or reconcile Redis and database sellable-stock flow records by SKU and time range, in local, test, pre-release, or production environments.
+description: Use when an agent needs to query hbip-scm stock reconciliation batches or differences, or reconcile Redis and database sellable-stock flow records by SKU and time range through PMS-authenticated test pre prod environments.
 ---
 
 # Query Industrial Stock Reconcile
 
 ## Purpose
 
-Use the hbip-scm Agent stock APIs for one of two distinct reconciliation concepts:
+Use the PMS-authenticated SCM admin APIs for one of two distinct reconciliation concepts:
 
 1. Query persisted stock-snapshot reconciliation batches and pending differences.
 2. Run a read-only comparison of Redis and database sellable-stock flow records for specified SKUs and a time window.
 
 Select one endpoint from the user's intent. Do not treat flow reconciliation as stock recalculation, stock balance comparison, repair, or inventory modification.
 
-## Environment Selection
+## Security Rules
 
-| Environment | Base URL source | Default |
-| --- | --- | --- |
-| `local` | Fixed local startup URL | `http://localhost:8803` |
-| `test` | `SCM_STOCK_TEST_BASE_URL` | Ask if missing |
-| `pre` / `pre-release` | `SCM_STOCK_PRE_BASE_URL` | Ask if missing |
-| `prod` / `production` | `SCM_STOCK_PROD_BASE_URL` | Ask if missing |
-
-Before querying `prod`, confirm that the user explicitly requested production. Do not infer production from ambiguous wording.
-
-If authentication is required, read it from `SCM_AUTH_TOKEN`. Never print tokens, cookies, sensitive internal hosts, or real customer data.
+- Never read, open, cat, sed, grep, summarize, or display the PMS login config file in the agent context. It contains domains, accounts, passwords, and authorization tokens.
+- Use the PMS login skill's `scripts/read_pms_env.py` helper to read runtime values into variables. Do not print those variables.
+- Always execute Python helpers through `uvx --isolated --python 3.14 python ...`.
+- Never print authorization tokens, passwords, cookies, or sensitive production hosts.
+- Only query `prod` when the user explicitly selects production.
 
 ## Intent Routing
 
@@ -33,9 +28,9 @@ Choose exactly one endpoint by default.
 
 | User intent | Endpoint |
 | --- | --- |
-| 查询库存对账批次、扫描进度、差异数量，或按批次开始时间筛选 | `/scm/inner/stock/agent-api/query-reconcile-batch` |
-| 已知批次号，查询库存快照差异、修复目标或修复建议 | `/scm/inner/stock/agent-api/query-reconcile-detail` |
-| 按时间范围和 SKU 对账 Redis、数据库可售库存流水，排查单边缺失或变动数量不一致 | `/scm/inner/stock/agent-api/reconcile-sellable-stock-flow` |
+| 查询库存对账批次、扫描进度、差异数量，或按批次开始时间筛选 | `/scm/admin/stock/query/query-reconcile-batch` |
+| 已知批次号，查询库存快照差异、修复目标或修复建议 | `/scm/admin/stock/query/query-reconcile-detail` |
+| 按时间范围和 SKU 对账 Redis、数据库可售库存流水，排查单边缺失或变动数量不一致 | `/scm/admin/stock/query/reconcile-sellable-stock-flow` |
 
 Use these semantic boundaries:
 
@@ -56,14 +51,35 @@ Important distinctions:
 ## Shared Request Rules
 
 - Method: `POST`
-- Content type: `application/json`
-- Omit the `Authorization` header when authentication is not required.
+- Headers: `authorization`, `content-type: application/json`, `x-app-code: ADMIN`, `x-client-type: PC`
 - Treat HTTP errors, authentication errors, timeouts, and a non-success outer `Result` as request failures.
 - Do not automatically chain reconciliation endpoints.
+- `base_url` and `authorization` must come from the selected environment through `../pms-login/scripts/read_pms_env.py`.
+
+Use this command shape for all reconciliation endpoints:
+
+```bash
+ENV_NAME="test"
+ENDPOINT="/scm/admin/stock/query/query-reconcile-batch"
+DATA_RAW='{"pageNo":1}'
+PMS_CONFIG="../pms-login/pms-login-config.json"
+
+BASE_URL="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field base_url)"
+AUTHORIZATION="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field authorization)"
+
+curl -sS "${BASE_URL}${ENDPOINT}" \
+  -H "authorization: ${AUTHORIZATION}" \
+  -H "content-type: application/json" \
+  -H "x-app-code: ADMIN" \
+  -H "x-client-type: PC" \
+  --data-raw "${DATA_RAW}"
+```
+
+If the business API returns `{"msg":"无权限","code":401,"ok":false}`, run `uvx --isolated --python 3.14 python ../pms-login/scripts/pms_login.py --env "${ENV_NAME}"`, reload `BASE_URL` and `AUTHORIZATION` with `read_pms_env.py`, and retry once. If the retry still returns `code=401`, stop.
 
 ## Query Reconciliation Batches
 
-Use `/scm/inner/stock/agent-api/query-reconcile-batch` for batch-level stock-snapshot reconciliation information.
+Use `/scm/admin/stock/query/query-reconcile-batch` for batch-level stock-snapshot reconciliation information.
 
 Request fields:
 
@@ -75,14 +91,8 @@ Request fields:
 
 Use `yyyy-MM-dd HH:mm:ss`. Do not use the ISO `T` separator.
 
-```bash
-BASE_URL="${SCM_STOCK_TEST_BASE_URL}"
-
-curl -sS -X POST \
-  "${BASE_URL}/scm/inner/stock/agent-api/query-reconcile-batch" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '{"pageNo":1,"startTimeFrom":"2026-06-01 00:00:00","startTimeTo":"2026-06-10 23:59:59"}'
+```json
+{"pageNo":1,"startTimeFrom":"2026-06-01 00:00:00","startTimeTo":"2026-06-10 23:59:59"}
 ```
 
 Behavior:
@@ -109,7 +119,7 @@ Each record contains:
 
 ## Query Reconciliation Difference Details
 
-Use `/scm/inner/stock/agent-api/query-reconcile-detail` only when a stock-snapshot reconciliation batch number is known.
+Use `/scm/admin/stock/query/query-reconcile-detail` only when a stock-snapshot reconciliation batch number is known.
 
 Request fields:
 
@@ -118,14 +128,8 @@ Request fields:
 | `pageNo` | Yes | Page number |
 | `batchNo` | Yes | Reconciliation batch number |
 
-```bash
-BASE_URL="${SCM_STOCK_TEST_BASE_URL}"
-
-curl -sS -X POST \
-  "${BASE_URL}/scm/inner/stock/agent-api/query-reconcile-detail" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '{"pageNo":1,"batchNo":"RECONCILE_202606100001"}'
+```json
+{"pageNo":1,"batchNo":"RECONCILE_202606100001"}
 ```
 
 Validate that `batchNo` is non-blank before calling. The current implementation returns a null result for a missing or blank batch number.
@@ -170,7 +174,7 @@ Known `diffType` values include:
 
 ## Reconcile Sellable-Stock Flows
 
-Use `/scm/inner/stock/agent-api/reconcile-sellable-stock-flow` to compare Redis and database sellable-stock flow records.
+Use `/scm/admin/stock/query/reconcile-sellable-stock-flow` to compare Redis and database sellable-stock flow records.
 
 This endpoint is read-only. It does not compare current stock balances, recalculate inventory, repair stock, modify stock, or insert missing flow records.
 
@@ -191,18 +195,12 @@ Validation rules:
 - Only SKU IDs are accepted; do not send SKU codes or SPU identifiers.
 - Use `yyyy-MM-dd HH:mm:ss`.
 
-```bash
-BASE_URL="${SCM_STOCK_TEST_BASE_URL}"
-
-curl -sS -X POST \
-  "${BASE_URL}/scm/inner/stock/agent-api/reconcile-sellable-stock-flow" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '{
+```json
+{
     "startTime":"2026-06-15 09:00:00",
     "endTime":"2026-06-15 10:00:00",
     "skuIds":[10001,10002]
-  }'
+}
 ```
 
 ### Matching Semantics
@@ -276,7 +274,7 @@ For sellable-stock flow reconciliation:
 
 After the selected result:
 
-- Report the environment as `local`, `test`, `pre`, or `prod`; do not print a sensitive host.
+- Report the environment as `test`, `pre`, or `prod`; do not print a sensitive host.
 - Report whether authentication was required; never print the credential.
 - Preserve returned business errors without hiding successful or anomalous detail rows.
 - For flow reconciliation, explicitly state that the operation was read-only and did not repair or modify inventory.

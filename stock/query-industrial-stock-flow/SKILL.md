@@ -1,26 +1,21 @@
 ---
 name: query-industrial-stock-flow
-description: Use when an agent needs to query hbip-scm raw stock flow pages by SKU or aggregated stock changes by main order, sub-order, or refund number in local, test, pre-release, or production environments.
+description: Use when an agent needs to query hbip-scm raw stock flow pages by SKU or aggregated stock changes by main order, sub-order, or refund number through PMS-authenticated test pre prod environments.
 ---
 
 # Query Industrial Stock Flow
 
 ## Purpose
 
-Query raw stock flow rows or business-stage stock changes through the hbip-scm Agent stock API. Select one endpoint from the user's intent; do not automatically chain the raw and aggregate queries.
+Query raw stock flow rows or business-stage stock changes through the PMS-authenticated SCM admin API. Select one endpoint from the user's intent; do not automatically chain the raw and aggregate queries.
 
-## Environment Selection
+## Security Rules
 
-| Environment | Base URL source | Default |
-| --- | --- | --- |
-| `local` | Fixed local startup URL | `http://localhost:8803` |
-| `test` | `SCM_STOCK_TEST_BASE_URL` | Ask if missing |
-| `pre` / `pre-release` | `SCM_STOCK_PRE_BASE_URL` | Ask if missing |
-| `prod` / `production` | `SCM_STOCK_PROD_BASE_URL` | Ask if missing |
-
-Before querying `prod`, confirm that the user explicitly requested production. Do not infer production from ambiguous wording.
-
-If authentication is required, read it from `SCM_AUTH_TOKEN`. Never print tokens, cookies, sensitive internal hosts, or real customer data.
+- Never read, open, cat, sed, grep, summarize, or display the PMS login config file in the agent context. It contains domains, accounts, passwords, and authorization tokens.
+- Use the PMS login skill's `scripts/read_pms_env.py` helper to read runtime values into variables. Do not print those variables.
+- Always execute Python helpers through `uvx --isolated --python 3.14 python ...`.
+- Never print authorization tokens, passwords, cookies, or sensitive production hosts.
+- Only query `prod` when the user explicitly selects production.
 
 ## Intent Routing
 
@@ -28,18 +23,39 @@ Choose exactly one endpoint by default.
 
 | User intent | Endpoint |
 | --- | --- |
-| 按 SKU ID 或 SKU 编码查看原始库存流水、流水时间、库存类型、流水类型和变更前后数量 | `/scm/inner/stock/agent-api/query-stock-flow-page` |
-| 按主订单号、子订单号或退款单号查看下单、取消/超时、发货前退款、发货后退款和出库阶段的聚合库存变更 | `/scm/inner/stock/agent-api/query-stock-flow` |
+| 按 SKU ID 或 SKU 编码查看原始库存流水、流水时间、库存类型、流水类型和变更前后数量 | `/scm/admin/stock/query/query-stock-flow-page` |
+| 按主订单号、子订单号或退款单号查看下单、取消/超时、发货前退款、发货后退款和出库阶段的聚合库存变更 | `/scm/admin/stock/query/query-stock-flow` |
 
 Do not call both endpoints unless the user explicitly asks for both raw database flows and business-stage aggregation.
 
 ## Shared Request Rules
 
 - Method: `POST`
-- Content type: `application/json`
+- Headers: `authorization`, `content-type: application/json`, `x-app-code: ADMIN`, `x-client-type: PC`
 - Outer response: `Result<AgentStockFlowQueryResultDTO>`
 - Successful data and `errors` may coexist. Do not discard successful rows because `errors` is non-empty.
-- Omit the `Authorization` header when authentication is not required.
+- `base_url` and `authorization` must come from the selected environment through `../pms-login/scripts/read_pms_env.py`.
+
+Use this command shape for both stock-flow endpoints:
+
+```bash
+ENV_NAME="test"
+ENDPOINT="/scm/admin/stock/query/query-stock-flow-page"
+DATA_RAW='{"pageNo":1,"skuIds":[26060300019000001]}'
+PMS_CONFIG="../pms-login/pms-login-config.json"
+
+BASE_URL="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field base_url)"
+AUTHORIZATION="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field authorization)"
+
+curl -sS "${BASE_URL}${ENDPOINT}" \
+  -H "authorization: ${AUTHORIZATION}" \
+  -H "content-type: application/json" \
+  -H "x-app-code: ADMIN" \
+  -H "x-client-type: PC" \
+  --data-raw "${DATA_RAW}"
+```
+
+If the business API returns `{"msg":"无权限","code":401,"ok":false}`, run `uvx --isolated --python 3.14 python ../pms-login/scripts/pms_login.py --env "${ENV_NAME}"`, reload `BASE_URL` and `AUTHORIZATION` with `read_pms_env.py`, and retry once. If the retry still returns `code=401`, stop.
 
 ## Query Raw Stock Flow Page
 
@@ -91,22 +107,16 @@ Supported flow types:
 
 Although the controller comment says stock and flow types should be specified, the current implementation treats both filter lists as optional. Omit them when the user asks for all flows for the selected SKUs.
 
-Example:
+Request example body:
 
-```bash
-BASE_URL="${SCM_STOCK_TEST_BASE_URL}"
-ENDPOINT="<raw-flow-endpoint-from-intent-routing>"
-
-curl -sS -X POST "${BASE_URL}${ENDPOINT}" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '{
+```json
+{
     "pageNo": 1,
     "skuIds": [26060300019000001],
     "skuCodes": ["SKU26060300019000001"],
     "stockTypes": ["VIRTUAL_STOCK", "FROZEN_STOCK"],
     "flowTypes": ["REDUCE_SELLABLE_STOCK", "ADD_FROZEN_STOCK"]
-  }'
+}
 ```
 
 Behavior:
@@ -146,16 +156,10 @@ Request fields:
 
 Trim surrounding whitespace before calling. Reject a blank value or a value longer than 64 characters.
 
-Example:
+Request example body:
 
-```bash
-BASE_URL="${SCM_STOCK_TEST_BASE_URL}"
-ENDPOINT="<aggregate-flow-endpoint-from-intent-routing>"
-
-curl -sS -X POST "${BASE_URL}${ENDPOINT}" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '{"uniqueNo":"ORDER_OR_RF_NUMBER"}'
+```json
+{"uniqueNo":"ORDER_OR_RF_NUMBER"}
 ```
 
 Number recognition:

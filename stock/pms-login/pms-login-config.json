@@ -1,0 +1,28 @@
+{
+  "environments": {
+    "test": {
+      "base_url": "https://test-hbip-gateway.tongfuyouxuan.com",
+      "username": "你的pms账号",
+      "password": "你的pms密码",
+      "deviceid": "bce9263a422e8ddc98fb14fc422c7686",
+      "origin": "https://test-hbpms.tongfuyouxuan.com",
+      "authorization": ""
+    },
+    "pre": {
+      "base_url": "<pre-pms-gateway-domain>",
+      "username": "<pre-pms-username>",
+      "password": "<pre-pms-password>",
+      "deviceid": "<pre-deviceid>",
+      "origin": "<pre-pms-origin>",
+      "authorization": ""
+    },
+    "prod": {
+      "base_url": "<prod-pms-gateway-domain>",
+      "username": "<prod-pms-username>",
+      "password": "<prod-pms-password>",
+      "deviceid": "<prod-deviceid>",
+      "origin": "<prod-pms-origin>",
+      "authorization": ""
+    }
+  }
+}

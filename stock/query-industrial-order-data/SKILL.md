@@ -1,30 +1,21 @@
 ---
 name: query-industrial-order-data
-description: Use when an agent needs to identify order types or query main-order, sub-order, refund-order, forward-order, or reverse-order data through hbip-scm StockAgentApiController endpoints in local, test, pre-release, or production environments.
+description: Use when an agent needs to identify order types or query main-order, sub-order, refund-order, forward-order, or reverse-order data through PMS-authenticated hbip-scm admin stock query endpoints.
 ---
 
 # Query Industrial Order Data
 
 ## Purpose
 
-Call one of the seven hbip-scm Agent order-query APIs according to the user's stated intent. Select one endpoint by default; do not automatically trace the complete main-order, sub-order, and refund-order relationship.
+Call one of the seven PMS-authenticated SCM admin order-query APIs according to the user's stated intent. Select one endpoint by default; do not automatically trace the complete main-order, sub-order, and refund-order relationship.
 
-## Platform And Security
+## Security Rules
 
-- Use the available HTTP tool or shell tool; prefer `curl` when no HTTP client is available.
-- Never print tokens, cookies, sensitive internal hosts, or real customer data.
-- These endpoints are read-only, but production queries still require explicit user intent.
-
-## Environment Selection
-
-| Environment | Base URL source | Default |
-| --- | --- | --- |
-| `local` | Fixed local startup URL | `http://localhost:8803` |
-| `test` | `SCM_STOCK_TEST_BASE_URL` | Ask if missing |
-| `pre` / `pre-release` | `SCM_STOCK_PRE_BASE_URL` | Ask if missing |
-| `prod` / `production` | `SCM_STOCK_PROD_BASE_URL` | Ask if missing |
-
-Do not infer production from ambiguous wording. If authentication is required, read it from `SCM_AUTH_TOKEN`; never ask the user to paste a token unless no safer option exists.
+- Never read, open, cat, sed, grep, summarize, or display the PMS login config file in the agent context. It contains domains, accounts, passwords, and authorization tokens.
+- Use the PMS login skill's `scripts/read_pms_env.py` helper to read runtime values into variables. Do not print those variables.
+- Always execute Python helpers through `uvx --isolated --python 3.14 python ...`.
+- Never print authorization tokens, passwords, cookies, or sensitive production hosts.
+- Only query `prod` when the user explicitly selects production.
 
 ## Intent Routing
 
@@ -32,13 +23,13 @@ Choose exactly one row unless the user explicitly requests multiple independent 
 
 | User intent | Endpoint |
 | --- | --- |
-| 判断单号是主订单、子订单还是退单 | `/scm/inner/stock/agent-api/query-order-type` |
-| 查询主订单下所有子订单，或判断传入单号是否为子订单 | `/scm/inner/stock/agent-api/query-sub-order-nos` |
-| 根据正向单号查询关联的退款单号，不查询退款商品详情 | `/scm/inner/stock/agent-api/query-refund-nos` |
-| 根据子订单查询主订单，或判断单号本身是否为主订单 | `/scm/inner/stock/agent-api/query-main-order-no` |
-| 根据 `RF_` 退款单号查询关联的子订单号 | `/scm/inner/stock/agent-api/query-sub-order-by-refund-no` |
-| 查询主订单或子订单的正向订单及商品详情 | `/scm/inner/stock/agent-api/query-forward-order-data` |
-| 查询 `RF_` 退款单及退款商品详情 | `/scm/inner/stock/agent-api/query-reverse-order-data` |
+| 判断单号是主订单、子订单还是退单 | `/scm/admin/stock/query/query-order-type` |
+| 查询主订单下所有子订单，或判断传入单号是否为子订单 | `/scm/admin/stock/query/query-sub-order-nos` |
+| 根据正向单号查询关联的退款单号，不查询退款商品详情 | `/scm/admin/stock/query/query-refund-nos` |
+| 根据子订单查询主订单，或判断单号本身是否为主订单 | `/scm/admin/stock/query/query-main-order-no` |
+| 根据 `RF_` 退款单号查询关联的子订单号 | `/scm/admin/stock/query/query-sub-order-by-refund-no` |
+| 查询主订单或子订单的正向订单及商品详情 | `/scm/admin/stock/query/query-forward-order-data` |
+| 查询 `RF_` 退款单及退款商品详情 | `/scm/admin/stock/query/query-reverse-order-data` |
 
 Important distinctions:
 
@@ -48,23 +39,46 @@ Important distinctions:
 - “退款单有哪些商品” uses `query-reverse-order-data`.
 - If the user only says “查询订单关系”, ask which relationship they need instead of calling several endpoints.
 
-## Request Contract
+## Request Flow
 
-All seven APIs use `POST`, `Content-Type: application/json`, and a raw JSON string array. Do not wrap the array in an object such as `{"orderNos":[...]}`.
+All seven APIs use `POST`, `content-type: application/json`, and a raw JSON string array. Do not wrap the array in an object such as `{"orderNos":[...]}`.
+
+Run commands from this skill directory. Use shell variables so secrets are not printed.
 
 ```bash
-BASE_URL="http://localhost:8803"
-ENDPOINT="<selected-path-from-intent-routing>"
+ENV_NAME="test"
+ENDPOINT="/scm/admin/stock/query/query-order-type"
+DATA_RAW='["ORDER_NO_1","RF_1001"]'
+PMS_CONFIG="../pms-login/pms-login-config.json"
 
-curl -sS -X POST "${BASE_URL}${ENDPOINT}" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${SCM_AUTH_TOKEN}" \
-  -d '["ORDER_NO_1","RF_1001"]'
+BASE_URL="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field base_url)"
+AUTHORIZATION="$(uvx --isolated --python 3.14 python ../pms-login/scripts/read_pms_env.py --input "${PMS_CONFIG}" --env "${ENV_NAME}" --field authorization)"
+
+curl -sS "${BASE_URL}${ENDPOINT}" \
+  -H "authorization: ${AUTHORIZATION}" \
+  -H "content-type: application/json" \
+  -H "x-app-code: ADMIN" \
+  -H "x-client-type: PC" \
+  --data-raw "${DATA_RAW}"
 ```
 
-Omit the `Authorization` header when it is not required.
+Do not echo `BASE_URL` or `AUTHORIZATION`. The final answer should show only the environment name, not the sensitive host or token.
 
-The outer response is `Result<T>`. Treat HTTP errors, authentication errors, timeouts, and a non-success outer result as request failures. A successful outer response can still contain business descriptions such as “未查询到”, “不处理”, or “查询异常”.
+## Token Refresh
+
+If the business API returns:
+
+```json
+{"msg":"无权限","code":401,"ok":false}
+```
+
+refresh the PMS token once for the same environment:
+
+```bash
+uvx --isolated --python 3.14 python ../pms-login/scripts/pms_login.py --env "${ENV_NAME}"
+```
+
+Then reload `BASE_URL` and `AUTHORIZATION` with `../pms-login/scripts/read_pms_env.py` and retry the request once. If the retry still returns `code=401`, stop. Do not refresh again.
 
 ## Endpoint Usage
 
@@ -82,7 +96,6 @@ The outer response is `Result<T>`. Treat HTTP errors, authentication errors, tim
 - It also identifies when an input is already a sub-order or refund order.
 - Body example: `["MAIN_1001","SUB_1001","RF_1001"]`
 - Returns `List<String>` positionally aligned with input.
-- A main order can produce one description containing several comma-separated sub-order numbers.
 
 ### 3. Query Refund Numbers
 
@@ -90,7 +103,6 @@ The outer response is `Result<T>`. Treat HTTP errors, authentication errors, tim
 - Body example: `["MAIN_1001","SUB_1001","RF_1001"]`
 - Returns `List<String>` positionally aligned with input.
 - An `RF_` input is reported as already being a refund order.
-- No-match and caught-exception cases remain in the result as descriptions.
 
 ### 4. Query Main Order Number
 
@@ -105,25 +117,13 @@ The outer response is `Result<T>`. Treat HTTP errors, authentication errors, tim
 - Body example: `["RF_1001","ORDER_1002",""]`
 - Returns `List<String>` positionally aligned with input.
 - Non-`RF_` values return a “非退款单, 不处理” description.
-- Missing refund details, missing associated sub-orders, and caught exceptions return descriptions.
 
 ### 6. Query Forward Order Data
 
 - Use for detailed forward-order and goods data from main-order or sub-order numbers.
 - Body example: `["MAIN_1001","SUB_1002"]`
 - Returns `AgentForwardOrderQueryResultDTO` inside the outer `Result.data`.
-- The business result contains `data: List<AgentForwardOrderDTO>` and `errors: List<String>`.
-- A sub-order input returns that sub-order; a main-order input expands to all sub-orders.
-- Results are deduplicated by sub-order number.
-- Blank order numbers, unmatched orders, and caught exceptions are written to `errors` without discarding successful data.
-- The successful `data` list is expanded by sub-order and is not positionally aligned one-to-one with the input.
-
-`AgentForwardOrderQueryResultDTO`:
-
-```text
-data[AgentForwardOrderDTO]
-errors[string]
-```
+- Successful detail rows are read from `data.data`, and per-item errors are read from `data.errors`.
 
 `AgentForwardOrderDTO`:
 
@@ -139,16 +139,7 @@ goodsList[{skuId, skuName, num}]
 - Use for refund-order details and refund goods.
 - Body example: `["RF_1001","ORDER_1002",""]`
 - Returns `AgentReverseOrderQueryResultDTO` inside the outer `Result.data`.
-- The business result contains `data: List<AgentReverseOrderDTO>` and `errors: List<String>`.
-- Blank values, non-`RF_` values, unmatched refund orders, and caught exceptions are written to `errors` without discarding successful data.
-- The successful `data` list contains one element per queried refund order and is not positionally aligned one-to-one with the input when errors occur.
-
-`AgentReverseOrderQueryResultDTO`:
-
-```text
-data[AgentReverseOrderDTO]
-errors[string]
-```
+- Blank values, non-`RF_` values, unmatched refund orders, and caught exceptions are written to `data.errors`.
 
 `AgentReverseOrderDTO`:
 
@@ -158,8 +149,6 @@ orderNo
 orderStatus (0-待付款, 1-待发货, 2-待收货, 3-已完成, 4-已取消)
 goodsList[{skuId, skuName, num}]
 ```
-
-`orderStatus` is the associated order status. Preserve the numeric value from the API and present its Chinese meaning using the mapping above. If the value is null or outside `0-4`, report it as unknown instead of guessing.
 
 ## Response Presentation
 
@@ -181,19 +170,18 @@ For reverse-order data:
 
 Also report:
 
-- Environment name only: `local`, `test`, `pre`, or `prod`.
-- Whether authentication was required, without exposing credentials.
-- For forward/reverse DTO endpoints, present all entries from the business-level `errors` list after the successful data table.
-- Do not confuse outer `Result.data` with the inner business-level `data` list: successful detail rows are read from `response.data.data`, while per-item errors are read from `response.data.errors`.
+- Environment name only: `test`, `pre`, or `prod`.
+- Token refreshed: `yes` only if the first request returned 401 and PMS login was rerun; never print the token.
+- For forward/reverse DTO endpoints, present all entries from the business-level `data.errors` list after the successful data table.
 
 ## Common Mistakes
 
+- Reading or displaying the PMS login config file before running the command.
+- Using ad hoc inline Python instead of `../pms-login/scripts/read_pms_env.py`.
+- Using any runner other than `uvx`.
+- Manually copying a token into chat or the final answer.
+- Using legacy inner agent endpoints instead of the PMS admin endpoints.
+- Prefixing the authorization header with `Bearer`.
+- Retrying login more than once after repeated 401 responses.
 - Sending a JSON object instead of a raw JSON string array.
-- Calling `query-sub-order-nos` when starting from an `RF_` refund number.
-- Calling `query-refund-nos` when the user asked for refund goods details.
-- Assuming forward/reverse DTO results align one-to-one with inputs.
-- Reading forward/reverse rows from `response.data` instead of `response.data.data`.
-- Ignoring the business-level `response.data.errors` list because the outer result succeeded.
 - Automatically chaining endpoints when the user asked for one relationship.
-- Treating a business “未查询到” description as an HTTP failure.
-- Printing an auth token or a sensitive production base URL.
