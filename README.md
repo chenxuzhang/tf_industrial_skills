@@ -1,6 +1,60 @@
 # Industrial Skills
 
-hbip-scm 工业品 Agent 技能集合，涵盖库存查询、订单查询、Redis 查询、Nacos 配置查询和 GitLab CI 流水线操作。
+hbip-scm 工业品 Agent 技能集合，涵盖库存查询、订单查询、Redis 查询、Nacos 配置查询、GitLab CI 流水线操作和 PMS 登录功能。
+
+## 项目简介
+
+本项目为 hbip-scm 工业品系统提供了一系列 Agent 技能，用于自动化执行常见的运维和查询任务。这些技能可以帮助开发人员和运维人员快速查询库存信息、订单数据、配置信息，以及管理 CI/CD 流水线。
+
+## 快速开始
+
+### 常见使用场景
+
+#### 查询库存
+- 查询可售库存：`帮我查询一下本地环境 skuId 为 1 和 2 的可售库存`
+- 查询库存明细：`查询测试环境 skuId 1 和 2 的库存明细`
+- 查询库存流水：`查询测试环境 skuId 1 的库存流水`
+
+#### 查询订单
+- 判断订单类型：`帮我判断一下 ORDER_1001 是什么类型的订单`
+- 查询订单详情：`查询测试环境主订单 MAIN_1001 的商品详情`
+- 查询退款单：`查询退款单 RF_1001 的退款商品详情`
+
+#### 管理配置
+- 查询命名空间：`查询测试环境的命名空间列表`
+- 查询配置内容：`查看测试环境 application.yml 的配置内容`
+- 查询服务实例：`查询测试环境 hbip-scm 服务的实例列表`
+
+#### CI/CD 操作
+- 查询流水线：`查看最近的流水线执行记录`
+- 创建流水线：`创建测试环境流水线`
+
+#### PMS 登录
+- 登录测试环境：`登录测试环境 PMS`
+- 登录预发布环境：`登录预发布环境 PMS`
+
+### 环境配置快速参考
+
+#### 库存/订单服务
+
+| 环境 | 环境变量 | 默认地址 |
+| --- | --- | --- |
+| `local` | - | `http://localhost:8803` |
+| `test` | `SCM_STOCK_TEST_BASE_URL` | 需用户配置 |
+| `pre` / `pre-release` | `SCM_STOCK_PRE_BASE_URL` | 需用户配置 |
+| `prod` / `production` | `SCM_STOCK_PROD_BASE_URL` | 需用户配置 |
+
+认证令牌通过 `SCM_AUTH_TOKEN` 环境变量读取。
+
+#### Nacos 服务
+
+连接信息从 `~/.nacos/config.json` 或环境变量 `NACOS_{ENV}_ADDR`、`NACOS_{ENV}_USERNAME`、`NACOS_{ENV}_PASSWORD` 读取。支持环境：`test`、`staging`、`prod`。
+
+#### GitLab CI
+
+需在目标 Git 仓库目录下执行，依赖 `glab` 和 `jq` CLI 工具。
+
+---
 
 ## 目录结构
 
