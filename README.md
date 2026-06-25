@@ -346,6 +346,8 @@ tf_industrial_skills/
 用户: 查询子订单 SUB_1001 关联的退款单号
 用户: 查询测试环境主订单 MAIN_1001 的商品详情
 用户: 查询退款单 RF_1001 的退款商品详情
+用户: 查询本地环境子订单 SUB_1001 的订单详情
+用户: 查询测试环境所有退款单的详情
 ```
 
 ### 结果展示格式
@@ -409,6 +411,9 @@ tf_industrial_skills/
 用户: 查看测试环境 stock Redis 数据源配置
 用户: 查看当前支持哪些 Redis Key 模式
 用户: 查询 key hbip-scm:scm-stock:...:freeze:idempotent:ORDER_1001 的值
+用户: 查询本地环境 Redis 数据源配置
+用户: 查询测试环境所有 Redis Key 模式
+用户: 查询 key hbip-scm:scm-stock:...:unfreeze:idempotent:RF_1001 的值
 ```
 
 ### 结果展示格式
