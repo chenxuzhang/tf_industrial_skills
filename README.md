@@ -65,6 +65,7 @@ tf_industrial_skills/
 ├── nacos/
 │   └── nacos-query/                   # Nacos 配置与服务查询
 └── stock/
+    ├── pms-login/                     # PMS 管理后台登录
     ├── query-industrial-order-data/       # 订单数据查询
     ├── query-industrial-sellable-stock/   # 可售库存查询
     ├── query-industrial-stock-detail/     # 库存明细查询
@@ -108,6 +109,7 @@ tf_industrial_skills/
 | [query-industrial-order-data](#query-industrial-order-data) | 查询订单数据 | 订单类型判断 / 正向&退款订单详情 |
 | [nacos-query](#nacos-query) | 查询 Nacos 配置 | 命名空间 / 配置 / 服务实例 / SCM IP |
 | [gitlab-pipeline-operations](#gitlab-pipeline-operations) | GitLab CI 流水线 | 查询记录 / 按 ID 查详情 / 创建流水线 |
+| [pms-login](#pms-login) | PMS 管理后台登录 | 环境选择 / 安全登录 / 令牌管理 |
 
 ---
 
@@ -449,6 +451,86 @@ uvx --from . nacos-get-service-detail --env test --service-name hbip-scm --group
 用户: 查看测试环境 application.yml 的配置内容
 用户: 查询测试环境 hbip-scm 服务的实例列表
 ```
+
+---
+
+## pms-login
+
+**用途**: 登录 PMS 管理后台，获取授权令牌
+
+**执行方式**: 在技能目录下通过 `uvx --from .` 执行 Python CLI
+
+### 配置文件结构
+
+配置文件 `pms-login-config.json` 包含环境配置：
+
+```json
+{
+  "environments": {
+    "test": {
+      "base_url": "https://test-pms.example.com",
+      "username": "test_user",
+      "password": "test_password",
+      "authorization": ""
+    },
+    "pre": {
+      "base_url": "https://pre-pms.example.com",
+      "username": "pre_user",
+      "password": "pre_password",
+      "authorization": ""
+    },
+    "prod": {
+      "base_url": "https://pms.example.com",
+      "username": "prod_user",
+      "password": "prod_password",
+      "authorization": ""
+    }
+  }
+}
+```
+
+### 安全规则
+
+- 不要打印密码、authorization、cookies 或完整 JWT 值
+- 不要读取、打开、cat、sed、grep、总结或显示 `pms-login-config.json`
+- 只有 `scripts/pms_login.py` 可以读取或写入 `pms-login-config.json`
+- 需要明确指定环境：`test`、`pre` 或 `prod`
+- 不要从模糊的措辞中推断生产环境；只在用户明确选择 `--env prod` 时运行 `prod`
+- 将 `data.authorization` 视为令牌；不要使用 `data.token`
+- 将环境域名、用户名、密码和授权令牌保存在 `pms-login-config.json` 中；不要在脚本中硬编码
+
+### 使用步骤
+
+1. 配置 `pms-login-config.json` 文件
+2. 运行登录命令
+3. 获取授权令牌
+
+### 命令示例
+
+```bash
+# 登录测试环境
+uvx --from . pms-login --env test
+
+# 登录预发布环境
+uvx --from . pms-login --env pre
+
+# 登录生产环境
+uvx --from . pms-login --env prod
+```
+
+### 对话示例
+
+```
+用户: 登录测试环境 PMS
+用户: 登录预发布环境 PMS
+用户: 登录生产环境 PMS
+```
+
+### 结果展示格式
+
+| 环境 | 状态 | 令牌写入位置 |
+| --- | --- | --- |
+| test | 成功 | pms-login-config.json -> environments.test.authorization |
 
 ---
 
