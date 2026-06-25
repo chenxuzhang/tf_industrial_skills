@@ -117,7 +117,7 @@ tf_industrial_skills/
 
 **用途**: 查询工业品项目可售库存（Redis 缓存 + 数据库）
 
-**API 端点**: `POST /scm/inner/stock/agent-api/query-sellable-stock`
+**API 端点**: `POST /scm/admin/stock/query/query-sellable-stock`
 
 ### 支持的查询类型
 
@@ -159,7 +159,7 @@ tf_industrial_skills/
 
 **用途**: 查询数据库库存明细（真实库存、冻结库存、可售库存）
 
-**API 端点**: `POST /scm/inner/stock/agent-api/query-stock-detail`
+**API 端点**: `POST /scm/admin/stock/query/query-stock-detail`
 
 ### 支持的查询类型
 
@@ -201,8 +201,8 @@ tf_industrial_skills/
 **用途**: 查询库存流水（原始流水记录 或 按订单聚合的库存变更）
 
 **API 端点**:
-- `POST /scm/inner/stock/agent-api/query-stock-flow-page` - 按 SKU 查询原始库存流水
-- `POST /scm/inner/stock/agent-api/query-stock-flow` - 按订单号查询聚合库存变更
+- `POST /scm/admin/stock/query/query-stock-flow-page` - 按 SKU 查询原始库存流水
+- `POST /scm/admin/stock/query/query-stock-flow` - 按订单号查询聚合库存变更
 
 ### 原始库存流水查询
 
@@ -262,8 +262,8 @@ tf_industrial_skills/
 **用途**: 查询库存对账批次和待处理差异明细
 
 **API 端点**:
-- `POST /scm/inner/stock/agent-api/query-reconcile-batch` - 查询对账批次列表
-- `POST /scm/inner/stock/agent-api/query-reconcile-detail` - 查询批次差异明细
+- `POST /scm/admin/stock/query/query-reconcile-batch` - 查询对账批次列表
+- `POST /scm/admin/stock/query/query-reconcile-detail` - 查询批次差异明细
 
 ### 对账批次查询
 
@@ -322,13 +322,13 @@ tf_industrial_skills/
 
 | 用户意图 | API 端点 |
 | --- | --- |
-| 判断单号类型（主订单/子订单/退单） | `/scm/inner/stock/agent-api/query-order-type` |
-| 查询主订单下所有子订单 | `/scm/inner/stock/agent-api/query-sub-order-nos` |
-| 根据正向单号查询关联退款单号 | `/scm/inner/stock/agent-api/query-refund-nos` |
-| 根据子订单查询主订单 | `/scm/inner/stock/agent-api/query-main-order-no` |
-| 根据退款单号查询关联子订单 | `/scm/inner/stock/agent-api/query-sub-order-by-refund-no` |
-| 查询正向订单及商品详情 | `/scm/inner/stock/agent-api/query-forward-order-data` |
-| 查询退款单及退款商品详情 | `/scm/inner/stock/agent-api/query-reverse-order-data` |
+| 判断单号类型（主订单/子订单/退单） | `/scm/admin/stock/query/query-order-type` |
+| 查询主订单下所有子订单 | `/scm/admin/stock/query/query-sub-order-nos` |
+| 根据正向单号查询关联退款单号 | `/scm/admin/stock/query/query-refund-nos` |
+| 根据子订单查询主订单 | `/scm/admin/stock/query/query-main-order-no` |
+| 根据退款单号查询关联子订单 | `/scm/admin/stock/query/query-sub-order-by-refund-no` |
+| 查询正向订单及商品详情 | `/scm/admin/stock/query/query-forward-order-data` |
+| 查询退款单及退款商品详情 | `/scm/admin/stock/query/query-reverse-order-data` |
 
 ### 请求格式
 
@@ -377,9 +377,9 @@ tf_industrial_skills/
 **用途**: 查询 hbip-scm 库存 Redis 数据源配置、Key 模式和 Key 值
 
 **API 端点**:
-- `POST /scm/inner/stock/agent-api/query-redis-config` - 查询 Redis 数据源配置
-- `POST /scm/inner/stock/agent-api/query-redis-keys` - 查询支持的 Redis Key 模式
-- `POST /scm/inner/stock/agent-api/query-redis-value` - 查询指定 Key 的值、类型和 TTL
+- `POST /scm/admin/stock/redis/query-redis-config` - 查询 Redis 数据源配置
+- `POST /scm/admin/stock/redis/query-redis-keys` - 查询支持的 Redis Key 模式
+- `POST /scm/admin/stock/redis/query-redis-value` - 查询指定 Key 的值、类型和 TTL
 
 ### 查询 Redis 配置
 
