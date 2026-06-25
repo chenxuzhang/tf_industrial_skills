@@ -220,7 +220,7 @@ tf_industrial_skills/
 
 **支持的库存类型**: `REAL_STOCK`（真实库存）、`FROZEN_STOCK`（冻结库存）、`VIRTUAL_STOCK`（可售库存）
 
-**支持的流水类型**: `REDUCE_SELLABLE_STOCK`、`ADD_FROZEN_STOCK`、`ADD_SELLABLE_STOCK`、`REDUCE_FROZEN_STOCK`、`REDUCE_REAL_STOCK`、`MANUAL_INCREASE`、`MANUAL_DECREASE`
+**支持的流水类型**: `REDUCE_SELLABLE_STOCK`、`ADD_FROZEN_STOCK`、`ADD_SELLABLE_STOCK`、`REDUCE_FROZEN_STOCK`、`REDUCE_REAL_STOCK`、`ADD_REAL_STOCK`、`MANUAL_INCREASE`、`MANUAL_DECREASE`
 
 ### 聚合库存变更查询
 
@@ -264,6 +264,7 @@ tf_industrial_skills/
 **API 端点**:
 - `POST /scm/admin/stock/query/query-reconcile-batch` - 查询对账批次列表
 - `POST /scm/admin/stock/query/query-reconcile-detail` - 查询批次差异明细
+- `POST /scm/admin/stock/query/reconcile-sellable-stock-flow` - 按时间范围和 SKU 对账 Redis、数据库可售库存流水
 
 ### 对账批次查询
 
@@ -366,9 +367,9 @@ tf_industrial_skills/
 
 **退款单详情**:
 
-| 退款单号 | 子订单号 | SKU ID | SKU 名称 | 退款数量 |
-| --- | --- | --- | --- | --- |
-| RF_1001 | SUB_1001 | 1 | 商品A | 1 |
+| 退款单号 | 子订单号 | 订单状态 | SKU ID | SKU 名称 | 退款数量 |
+| --- | --- | --- | --- | --- | --- |
+| RF_1001 | SUB_1001 | 已完成 | 1 | 商品A | 1 |
 
 ---
 
@@ -525,13 +526,13 @@ uvx --from . nacos-get-service-detail --env test --service-name hbip-scm --group
 
 ```bash
 # 登录测试环境
-uvx --from . pms-login --env test
+uvx --isolated --python 3.14 python scripts/pms_login.py --env test
 
 # 登录预发布环境
-uvx --from . pms-login --env pre
+uvx --isolated --python 3.14 python scripts/pms_login.py --env pre
 
 # 登录生产环境
-uvx --from . pms-login --env prod
+uvx --isolated --python 3.14 python scripts/pms_login.py --env prod
 ```
 
 ### 对话示例
