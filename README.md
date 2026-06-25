@@ -259,7 +259,7 @@ tf_industrial_skills/
 
 ## query-industrial-stock-reconcile
 
-**用途**: 查询库存对账批次和待处理差异明细
+**用途**: 查询库存对账批次、待处理差异明细，或按时间范围和 SKU 对账 Redis、数据库可售库存流水
 
 **API 端点**:
 - `POST /scm/admin/stock/query/query-reconcile-batch` - 查询对账批次列表
