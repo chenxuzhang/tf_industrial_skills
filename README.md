@@ -392,16 +392,16 @@ tf_industrial_skills/
 
 | Key 模式 | 占位符 | 用途 |
 | --- | --- | --- |
-| `hbip-scm:scm-stock:...:stock:freeze:idempotent:%s` | 主订单号 | 下单库存冻结幂等 |
-| `hbip-scm:scm-stock:...:stock:unfreeze:idempotent:%s` | 子订单号 / 退款单号 | 库存解冻幂等 |
+| `hbip-scm:scm-stock:scm-stock-service:stock:freeze:idempotent:%s` | 主订单号 | 下单库存冻结幂等 |
+| `hbip-scm:scm-stock:scm-stock-service:stock:unfreeze:idempotent:%s` | 子订单号 / 退款单号 | 库存解冻幂等 |
 
 ### 查询 Redis 值
 
 ```json
 {
   "keys": [
-    {"key": "hbip-scm:...:freeze:idempotent:MAIN_ORDER_NO", "dataSource": "可选数据源名"},
-    {"key": "hbip-scm:...:unfreeze:idempotent:RF_1001"}
+    {"key": "hbip-scm:scm-stock:scm-stock-service:stock:freeze:idempotent:MAIN_ORDER_NO", "dataSource": "可选数据源名"},
+    {"key": "hbip-scm:scm-stock:scm-stock-service:stock:unfreeze:idempotent:RF_1001"}
   ]
 }
 ```
@@ -411,10 +411,10 @@ tf_industrial_skills/
 ```
 用户: 查看测试环境 stock Redis 数据源配置
 用户: 查看当前支持哪些 Redis Key 模式
-用户: 查询 key hbip-scm:scm-stock:...:freeze:idempotent:ORDER_1001 的值
+用户: 查询 key hbip-scm:scm-stock:scm-stock-service:stock:freeze:idempotent:ORDER_1001 的值
 用户: 查询本地环境 Redis 数据源配置
 用户: 查询测试环境所有 Redis Key 模式
-用户: 查询 key hbip-scm:scm-stock:...:unfreeze:idempotent:RF_1001 的值
+用户: 查询 key hbip-scm:scm-stock:scm-stock-service:stock:unfreeze:idempotent:RF_1001 的值
 ```
 
 ### 结果展示格式
