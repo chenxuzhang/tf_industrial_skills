@@ -463,6 +463,9 @@ uvx --from . nacos-get-service-detail --env test --service-name hbip-scm --group
 用户: 查询 industrial-test 命名空间下的配置列表
 用户: 查看测试环境 application.yml 的配置内容
 用户: 查询测试环境 hbip-scm 服务的实例列表
+用户: 查询预发布环境的命名空间列表
+用户: 查询生产环境 application.properties 的配置内容
+用户: 查询测试环境所有服务的实例列表
 ```
 
 ---
@@ -583,6 +586,9 @@ done
 用户: 查询流水线 ID 1234 的详情
 用户: 创建测试环境流水线
 用户: 触发正式环境流水线
+用户: 查看最近 5 条流水线执行记录
+用户: 查询流水线 ID 5678 的详细状态
+用户: 创建预发布环境流水线
 ```
 
 ### 安全规则
